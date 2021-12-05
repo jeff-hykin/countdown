@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <!-- <script src="https://unpkg.com/good-dom"></script> -->
+        <link rel="stylesheet" href="https://unpkg.com/css-baseline/css/3.css">
+        <title>Test</title>
+    </head>
+    <script type="module">;(async () => {
+        // 
+        // 
+        // Main code
+        // 
+        // 
+        const {html} = await import("https://cdn.skypack.dev/@!!!!!/elemental@0.0.7")
+        const Container = (await import("https://cdn.skypack.dev/-/@!vanilla/container@v1.0.0-bGpbHkspZ6O4lL0CywGx/dist=es2019,mode=imports/optimized/@!vanilla/container.js")).default
+        
+        document.body = html`
+            <body>
+                <${Container} verticalAlignment="center" horizontalAlignment="center" width="50rem" height="50rem" backgroundColor="lightcoral">
+                    Howdy!
+                </>
+            </body>
+        `
+        
+        
+        async function Card({ style, children, ...props }) {
+            
+            return html`
+                <${Container} style=${style}>
+                    Do you even Async?
+                </>
+            `
+        }
+            
+    })()</script>
+</html>
