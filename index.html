@@ -1,11 +1,15 @@
+<body></body>
 <script type="module">;(async () => {
     // 
     // 
     // Main code
     // 
     // 
-    const {html} = await import("https://cdn.skypack.dev/@!!!!!/elemental@0.0.7")
-    const Container = (await import("https://cdn.skypack.dev/-/@!vanilla/container@v1.0.0-bGpbHkspZ6O4lL0CywGx/dist=es2019,mode=imports/optimized/@!vanilla/container.js")).default
+    const { html } = await import("https://cdn.skypack.dev/@!!!!!/elemental@0.0.7")
+    const { reactive } = await import("https://cdn.skypack.dev/@vue/reactivity")
+    const { watch } = await import("https://cdn.skypack.dev/@vue-reactivity/watch")
+    const DateTime = (await import("https://cdn.skypack.dev/good-date@1.3.16")).default
+    const Container = (await import("https://cdn.skypack.dev/@!vanilla/container@v1.0.4")).default
     
     document.head = html`
         <head>
@@ -18,20 +22,235 @@
     `
     document.body = html`
         <body>
-            <${Container} verticalAlignment="center" horizontalAlignment="center" width="50rem" height="50rem" backgroundColor="lightcoral">
+            <${Container} verticalAlignment="center" horizontalAlignment="center" width="50rem" height="10rem" backgroundColor="lightcoral">
                 Howdy!
+            </>
+            <${Container} verticalAlignment="center" horizontalAlignment="center" width="56rem" height="50rem" backgroundColor="lightblue">
+                <${TimerCard}>
+                </>
             </>
         </body>
     `
     
-    
-    async function Card({ style, children, ...props }) {
-        
+    function Countdown({targetUnixTime}) {
+        const { secondsUntil, minutesUntil, hoursUntil, daysUntil } = remainingTimeBreakdown(targetUnixTime)
         return html`
-            <${Container} style=${style}>
-                Do you even Async?
-            </>
+            <div>
+                ${daysUntil    && html`<h3>${daysUntil   }:</h3>`}
+                ${hoursUntil   && html`<h3>${hoursUntil  }:</h3>`}
+                ${minutesUntil && html`<h3>${minutesUntil}:</h3>`}
+                <h3>${secondsUntil}</h3>
+            </div>
         `
     }
+    
+    async function TimerCard({ style, children, ...props }) {
+        const countdownAreaElement = html`<div />`
+        const element = html`
+            <${Container} row width="50rem" horizontalAlignment="space-around">
+                ${countdownAreaElement}
+                <input
+                    style="width: 30rem; height: 10rem;"
+                    placeholder="(mm/dd/yyyy hh:mm I need to start typing)"
+                    oninput=${e=>{
+                        console.log("e",e)
+                        // get new todo list
+                        let todoList = parseUpcomingTodos(e.target.value)
+                        console.debug(`todoList is:`,todoList)
+                        // update the element time
+                        element.nextUnixDateTime = todoList[0]&&todoList[0].dateTime.getTime()
+                        // update the local countdown
+                        if (!element.nextUnixDateTime) {
+                            countdownAreaElement.innerHTML = "Done"
+                        } else {
+                            // create new countdown
+                            const countdownElement = Countdown(element.nextUnixDateTime)
+                            countdownAreaElement.innerHTML = ""
+                            countdownAreaElement.appendChild(countdownElement)
+                        }
+                    }}
+                    />
+            </>
+        `
+        return element
+    }
+    
+    
+    function parseUpcomingTodos(text, timezoneReference=(new Date())) {
+        console.debug(`text is:`,text)
+        let todos = []
+        let reocurringTasks = []
+        if (text) {
+            let lines = text.split(/\n(?=\S)/)
+            for (let each of lines) {
+                // 
+                // check for reocurring
+                // 
+                let reocurringMatch = each.match(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)/i)
+                if (reocurringMatch) {
+                    try {
+                        var { remaining: lineWithoutDays,  extraction: days} = extractFirst({ pattern: /^(\w+( *, *)?)+/,  from: each, })
+                        days = days.split(",").map(each=>each.trim())
+                        days = days.map(each=>{
+                            if      (each.match(/^Sun/i)) { return "Sunday"    }
+                            else if (each.match(/^Mon/i)) { return "Monday"    }
+                            else if (each.match(/^Tue/i)) { return "Tuesday"   }
+                            else if (each.match(/^Wed/i)) { return "Wednesday" }
+                            else if (each.match(/^Thu/i)) { return "Thursday"  }
+                            else if (each.match(/^Fri/i)) { return "Friday"    }
+                            else if (each.match(/^Sat/i)) { return "Saturday"  }
+                        })
+                        
+                        var { remaining: description ,  extraction: start} = extractFirst({ pattern: /\s*[^\s]+/,  from: lineWithoutDays, })
+                        start = start.trim()
+                        
+                        reocurringTasks.push({ description, start, days })
+                    } catch (error) {
+                        console.error("Error trying to parse weekly reocurring event")
+                        console.debug(`error is:`,error)
+                    }
+                    continue
+                }
+                
+                // 
+                // check for fixed / daily
+                // 
+                let match = each.match(/^(?:(\d+\/\d+\/\d+) )?(\d{1,2}):(\d{1,2})([aA][mM]|[pP][mM]) ([\s\S]*)/)
+                if (match) {
+                    let hour = match[2]-0
+                    let minute = match[3]-0
+                    let pmOrAm = match[4]
+                    let time = convertTime12to24(hour, minute, pmOrAm)
+                    let dateTime = new Date()
+                    if (match[1] != null) {
+                        dateTime = new Date((new Date(match[1])).getTime() + Math.abs(timezoneReference.getTimezoneOffset()*60000))
+                    }
+                    dateTime.setHours(time[0], time[1])
+                    if (match[1] == null) {
+                        if (dateTime.getTime() <= (new Date()).getTime()) {
+                            let oneDayInMiliseconds = 24*60*60*1000
+                            dateTime = new Date(dateTime.getTime()+oneDayInMiliseconds)
+                        }
+                    }
+                    // if it is a future event
+                    if (dateTime.getTime() > (new Date()).getTime()) {
+                        todos.push({
+                            dateTime,
+                            date: match[1],
+                            hour,
+                            minute,
+                            content: match[5],
+                        })
+                    }
+                }
+            }
+        }
+        todos = todos.sort((a,b)=>a.dateTime.getTime() - b.dateTime.getTime())
         
+        // 
+        // 
+        // handle reocurring tasks
+        // 
+        // 
+        const activeTasks = []
+        let now = new DateTime
+        let todayName = now.dayName
+        let tomorrowName = now.add({days: 1}).dayName
+        for (let each of reocurringTasks) {
+            // add to today
+            if (each.days.includes(todayName)) {
+                let eventDateTime = new DateTime()
+                eventDateTime.time = each.start
+                activeTasks.push({
+                    dateTime: eventDateTime,
+                    date: eventDateTime.date,
+                    hour: eventDateTime.hour24,
+                    minute: eventDateTime.minute,
+                    content: each.description,
+                })
+            }
+            // add to tomorrow
+            if (each.days.includes(tomorrowName)) {
+                let eventDateTime = new DateTime().add({days: 1})
+                eventDateTime.time = each.start
+                activeTasks.push({
+                    dateTime: eventDateTime,
+                    date: eventDateTime.date,
+                    hour: eventDateTime.hour24,
+                    minute: eventDateTime.minute,
+                    content: each.description,
+                })
+            }
+        }
+        
+        // 
+        // sort
+        // 
+        const unsortedTasks = todos.concat(activeTasks)
+        now = new Date().getTime()
+        const byTime = (a,b)=>a.dateTime.getTime()-b.dateTime.getTime()
+        const isInTheFuture = each=>(each.dateTime.getTime()-now)>0
+        const sortedTasks = ([...unsortedTasks]).filter(isInTheFuture).sort(byTime)
+        return sortedTasks
+    }
+        
+    function convertTime12to24(hours, minutes, pmOrAm) {
+        if (hours == "12") {
+            hours = "00"
+        }
+        if (pmOrAm.match(/[pP][mM]/)) {
+            hours = parseInt(hours, 10) + 12
+        }
+        return [hours, minutes]
+    }
+    
+    function countdownString(targetUnixTime) {
+        const { secondsUntil, minutesUntil, hoursUntil, daysUntil } = remainingTimeBreakdown(targetUnixTime)
+        let time = secondsUntil
+        if (minutesUntil) {
+            time = `${minutesUntil}:${time}`
+        }
+        if (hoursUntil) {
+            time = `${hoursUntil}:${time}`
+        }
+        if (daysUntil) {
+            time = `${daysUntil}:${time}`
+        }
+        return time
+    }
+    
+    function remainingTimeBreakdown(targetUnixTime) {
+        const currentUnixTimeInSeconds = new Date().getTime()/1000
+        const timeUntil = targetUnixTime/1000 - currentUnixTimeInSeconds
+        return {
+            secondsUntil: padZero(Math.floor(timeUntil % 60)),
+            minutesUntil: padZero(Math.floor((timeUntil/60) % 60)),
+            hoursUntil: Math.floor((timeUntil/3600) % 24),
+            daysUntil: Math.floor((timeUntil/86400)),
+        }
+    }
+    
+    function padZero(amount) {
+        if (amount < 10) {
+            return `0${amount}`
+        } else {
+            return amount
+        }
+    }
+    
+    function extractFirst({ pattern, from }) {
+        let match = from.match(pattern)
+        if (match) {
+            return {
+                remaining: from.slice(0, match.index)+ from.slice(match.index + match[0].length, from.length),
+                extraction: match[0]
+            }
+        } else {
+            return {
+                remaining: from,
+                extraction: null
+            }
+        }
+    }
+    
 })()</script>
