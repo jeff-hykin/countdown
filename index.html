@@ -30,8 +30,9 @@
     // Main code
     // 
     // 
-    var { html } = await import("https://deno.land/x/elementalist@0.5.28/main/deno.js?code")
-    // const { Elemental } = (await import("https://cdn.skypack.dev/@!!!!!/elemental@0.0.12")).default
+    
+    var { html } = await import("https://deno.land/x/elementalist@0.5.33/main/deno.js?code")
+    const storageObject = (await import("https://deno.land/x/storage_object@0.0.1.0/main.js")).default
     const Reactive = (await import("https://cdn.skypack.dev/cause-n-effect@3.0.0")).default
     const DateTime = (await import("https://cdn.skypack.dev/good-date@1.3.16")).default
     const Container = (await import("https://cdn.skypack.dev/@!vanilla/container@v1.0.5")).default
@@ -45,26 +46,41 @@
     
     // example input: Mon, Wed 11:00am Leave
     
-    document.body = html`
-        <body>
-            <Container verticalAlignment="center" horizontalAlignment="center" width="100%" height="10rem" backgroundColor="lightcoral" color=white>
+    let globalTime = 0
+    let timerCards = []
+    const banner = html`
+        <Container verticalAlignment="center" horizontalAlignment="center" width="100%" height="10rem" backgroundColor="lightcoral" color=white>
                 Howdy!
-            </Container>
+        </Container>
+    `
+    
+    document.body = html`
+        <body style="background: whitesmoke;">
+            ${banner}
             <${CardList} />
         </body>
     `
     
     function CardList({}) {
+        let timerCards = []
+        // init cards from local storage
+        if (storageObject.cards) {
+            for (const [cardId, textContent] of Object.entries(storageObject.cards)) {
+                timerCards.push(TimerCard({ cardId, textContent }))
+            }
+        }
         const cardContainer = html`
             <Container width="100%" horizontalAlignment="center" verticalAlignment="top" margin-top=1rem margin-bottom=3rem>
-                <${TimerCard}/>
+                ${timerCards}
             </Container>
         `
         const cardButton = html`
             <button
+                name="addCard"
                 class="weak-shadow"
                 type="button" 
                 onclick=${(event)=>{
+                    console.log(`event is:`,event)
                     cardContainer.appendChild(html`<${TimerCard} />`)
                 }}
                 >
@@ -84,7 +100,8 @@
         `
     }
     
-    function TimerCard({ style, children, ...props }) {
+    function TimerCard({ cardId, style, textContent, children, ...props }) {
+        cardId = cardId || Math.random()
         const countdownAreaElement = html`<div />`
         let timeUpdate
         const timeKeeper = Reactive({
@@ -110,9 +127,54 @@
         timeUpdate()
         // update the local countdown each second
         setInterval(()=>{
+            if (timerCards.length == 0) {
+                globalTime = 0
+                banner.innerHTML = "Howdy!"
+            } else {
+                globalTime = Math.min(timerCards.map(each=>each.nextUnixDateTime))
+                if (globalTime > 0) {
+                    banner.innerHTML = countdownString(globalTime)
+                } else { 
+                    banner.innerHTML = "Howdy!"
+                }
+            }
+            
             timeKeeper.$.now = (new Date()).getTime()
         },1000)
         
+        const textareaElement = html`
+            <textarea
+                rows="4"
+                cols="20"
+                style="
+                    width: 25rem;
+                    height: 4rem;
+                    border: none;
+                    border-bottom: 2px cornflowerblue solid;
+                    padding: 6px;
+                    background: transparent;
+                    border-radius: 5px;
+                    outline: none;
+                "
+                placeholder="(mm/dd/yyyy hh:mm I need to start typing)"
+                onInput=${e=>{
+                    console.log(`e is:`,e)
+                    // get new todo list
+                    let todoList = parseUpcomingTodos(e.target.value)
+                    // save for later
+                    storageObject.cards = {...storageObject.cards, [cardId]:e.target.value }
+                    // update the element time
+                    element.nextUnixDateTime = todoList[0]&&todoList[0].dateTime.getTime()
+                    // update if needed
+                    if (element.nextUnixDateTime !== timeKeeper.$.nextEvent) {
+                        console.debug(`updating log`,)
+                        timeKeeper.$.nextEvent = element.nextUnixDateTime
+                        console.debug(`timeKeeper.$.nextEvent is:`,timeKeeper.$.nextEvent)
+                        console.debug(`timeKeeper.$ is:`,timeKeeper.$)
+                    }
+                }}
+                />
+        `
         const element = html`
             <Container row width="55rem" horizontalAlignment="space-between" verticalAlignment="center" padding=1rem >
                 <Container class="weak-shadow" horizontalAlignment="right" verticalAlignment="center" padding=2rem border-radius=2rem width=16rem>
@@ -126,44 +188,24 @@
                             onclick=${(event)=>{
                                 console.debug(`event is:`,event)
                                 element.parentElement.removeChild(element)
+                                timerCards = timerCards.filter(each=>each!==element)
+                                // remove from localStorage
+                                delete storageObject.cards[cardId]
+                                storageObject.cards = {...storageObject.cards}
                             }}
                             >
                             X
                         </span>
                     </Container>
                     
-                    <textarea
-                        rows="4"
-                        cols="20"
-                        style="
-                            width: 25rem;
-                            height: 4rem;
-                            border: none;
-                            border-bottom: 2px cornflowerblue solid;
-                            padding: 6px;
-                            background: whitesmoke;
-                            border-radius: 5px;
-                            outline: none;
-                        "
-                        placeholder="(mm/dd/yyyy hh:mm I need to start typing)"
-                        oninput=${e=>{
-                            console.log("e",e)
-                            // get new todo list
-                            let todoList = parseUpcomingTodos(e.target.value)
-                            // update the element time
-                            element.nextUnixDateTime = todoList[0]&&todoList[0].dateTime.getTime()
-                            // update if needed
-                            if (element.nextUnixDateTime !== timeKeeper.$.nextEvent) {
-                                console.debug(`updating log`,)
-                                timeKeeper.$.nextEvent = element.nextUnixDateTime
-                                console.debug(`timeKeeper.$.nextEvent is:`,timeKeeper.$.nextEvent)
-                                console.debug(`timeKeeper.$ is:`,timeKeeper.$)
-                            }
-                        }}
-                        />
+                    ${textareaElement}
                 </Container>
             </Container>
         `
+        if (textContent) {
+            textareaElement.value = textContent
+        }
+        timerCards.push(element)
         return element
     }
     
