@@ -44,13 +44,13 @@
     let globalTime = 0
     let timerCards = []
     const banner = html`
-        <Container verticalAlignment="center" horizontalAlignment="center" width="100%" height="10rem" backgroundColor="lightcoral" color=white>
+        <Container verticalAlignment="center" horizontalAlignment="center" width="100%" height="10rem" backgroundColor="lightseagreen" color=white>
                 Howdy!
         </Container>
     `
     
     document.body = html`
-        <body style="background: whitesmoke;">
+        <body style="background: whitesmoke; padding-bottom: 3rem;">
             ${banner}
             <${CardList} />
         </body>
@@ -98,12 +98,19 @@
     setInterval(()=>{
         globalTime = (timerCards.length != 0) ? Math.min(...timerCards.map(each=>each.nextUnixDateTime)) : 0
         
+        let taskName = ""
         if (globalTime > 0) {
             document.title = countdownString(globalTime)
+            for (const each of timerCards) {
+                if (each.nextUnixDateTime == globalTime) {
+                    taskName = each.title
+                }
+            }
         } else { 
+            taskName = ""
             document.title = "Howdy!"
         }
-        banner.innerHTML = `<h2>${document.title}</h2>`
+        banner.innerHTML = `<h2>${document.title}</h2><h2>${taskName}</h2>`
     },1000)
         
     function TimerCard({ cardId, style, textContent, children, ...props }) {
@@ -186,7 +193,7 @@
                     ${countdownAreaElement}
                 </Container>
                 
-                <Container class="weak-shadow" horizontalAlignment="left" verticalAlignment="center" padding=2rem border-radius=2rem>
+                <Container class="weak-shadow" horizontalAlignment="left" verticalAlignment="center" padding=2rem border-radius=1rem>
                     <Container positionSelf="relativeToParent" right="1rem" top="1rem">
                         <span
                             style="cursor: pointer; color: lightcoral;"
