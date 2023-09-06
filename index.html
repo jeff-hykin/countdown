@@ -32,17 +32,12 @@
     // 
     
     var { html } = await import("https://deno.land/x/elementalist@0.5.33/main/deno.js?code")
-    const storageObject = (await import("https://deno.land/x/storage_object@0.0.1.0/main.js")).default
+    const storageObject = (await import("https://deno.land/x/storage_object@0.0.2.0/main.js")).default
     const Reactive = (await import("https://cdn.skypack.dev/cause-n-effect@3.0.0")).default
     const DateTime = (await import("https://cdn.skypack.dev/good-date@1.3.16")).default
     const Container = (await import("https://cdn.skypack.dev/@!vanilla/container@v1.0.5")).default
     
     html = html.extend({ Container, If: (props)=>props.true?props.children:"" })
-    
-    // TODO:
-    // - save to localstorage
-    // - global countdown
-    // - title bar countdown
     
     // example input: Mon, Wed 11:00am Leave
     
@@ -100,10 +95,24 @@
         `
     }
     
+    setInterval(()=>{
+        globalTime = (timerCards.length != 0) ? Math.min(...timerCards.map(each=>each.nextUnixDateTime)) : 0
+        
+        if (globalTime > 0) {
+            document.title = countdownString(globalTime)
+        } else { 
+            document.title = "Howdy!"
+        }
+        banner.innerHTML = `<h2>${document.title}</h2>`
+    },1000)
+        
     function TimerCard({ cardId, style, textContent, children, ...props }) {
         cardId = cardId || Math.random()
         const countdownAreaElement = html`<div />`
         let timeUpdate
+        let textareaElement
+        let element
+        
         const timeKeeper = Reactive({
             initialValue: {
                 now: (new Date()).getTime(),
@@ -112,37 +121,36 @@
             onUpdate: timeUpdate = ()=>{
                 const nextEvent = timeKeeper.$.nextEvent.$
                 const now = timeKeeper.$.now.$
-                if (nextEvent == null) {
-                    if (countdownAreaElement.innerHTML != "") {
-                        countdownAreaElement.innerHTML = ""
+                // refresh
+                if (now > nextEvent) {
+                    if (textareaElement) {
+                        // get new todo list
+                        let todoList = parseUpcomingTodos(textareaElement.value)
+                        // update the element time
+                        element.nextUnixDateTime = todoList[0]&&todoList[0].dateTime.getTime()
+                        element.title = todoList[0]&&todoList[0].content.trim().split("\n")[0]
+                        timeKeeper.$.nextEvent = element.nextUnixDateTime
                     }
                 } else {
-                    console.debug(`nextEvent is:`,nextEvent)
-                    const countdownElement = Countdown({targetUnixTime: nextEvent})
-                    countdownAreaElement.innerHTML = ""
-                    countdownAreaElement.appendChild(countdownElement)
+                    if (nextEvent == null) {
+                        if (countdownAreaElement.innerHTML != "") {
+                            countdownAreaElement.innerHTML = ""
+                        }
+                    } else {
+                        const countdownElement = Countdown({targetUnixTime: nextEvent, title: element.title})
+                        countdownAreaElement.innerHTML = ""
+                        countdownAreaElement.appendChild(countdownElement)
+                    }
                 }
             }
         })
         timeUpdate()
         // update the local countdown each second
         setInterval(()=>{
-            if (timerCards.length == 0) {
-                globalTime = 0
-                banner.innerHTML = "Howdy!"
-            } else {
-                globalTime = Math.min(timerCards.map(each=>each.nextUnixDateTime))
-                if (globalTime > 0) {
-                    banner.innerHTML = countdownString(globalTime)
-                } else { 
-                    banner.innerHTML = "Howdy!"
-                }
-            }
-            
             timeKeeper.$.now = (new Date()).getTime()
         },1000)
         
-        const textareaElement = html`
+        textareaElement = html`
             <textarea
                 rows="4"
                 cols="20"
@@ -158,26 +166,23 @@
                 "
                 placeholder="(mm/dd/yyyy hh:mm I need to start typing)"
                 onInput=${e=>{
-                    console.log(`e is:`,e)
                     // get new todo list
-                    let todoList = parseUpcomingTodos(e.target.value)
+                    let todoList = parseUpcomingTodos(textareaElement.value)
                     // save for later
                     storageObject.cards = {...storageObject.cards, [cardId]:e.target.value }
                     // update the element time
                     element.nextUnixDateTime = todoList[0]&&todoList[0].dateTime.getTime()
+                    element.title = todoList[0]&&todoList[0].content.trim().split("\n")[0]
                     // update if needed
                     if (element.nextUnixDateTime !== timeKeeper.$.nextEvent) {
-                        console.debug(`updating log`,)
                         timeKeeper.$.nextEvent = element.nextUnixDateTime
-                        console.debug(`timeKeeper.$.nextEvent is:`,timeKeeper.$.nextEvent)
-                        console.debug(`timeKeeper.$ is:`,timeKeeper.$)
                     }
                 }}
                 />
         `
-        const element = html`
-            <Container row width="55rem" horizontalAlignment="space-between" verticalAlignment="center" padding=1rem >
-                <Container class="weak-shadow" horizontalAlignment="right" verticalAlignment="center" padding=2rem border-radius=2rem width=16rem>
+        element = html`
+            <Container name="TimerCard" row width="55rem" horizontalAlignment="end" verticalAlignment="center" padding=1rem gap="8rem">
+                <Container class="weak-shadow" horizontalAlignment="right" verticalAlignment="center" padding=2rem border-radius=2rem width=fit-content>
                     ${countdownAreaElement}
                 </Container>
                 
@@ -209,26 +214,28 @@
         return element
     }
     
-    function Countdown({targetUnixTime}) {
+    function Countdown({targetUnixTime, title}) {
         const { secondsUntil, minutesUntil, hoursUntil, daysUntil } = remainingTimeBreakdown(targetUnixTime)
         return html`
-            <Container row>
-                <If true=${daysUntil}>
-                    <h3>${daysUntil}:</h3>
-                </If>
-                <If true=${hoursUntil}>
-                    <h3>${hoursUntil}:</h3>
-                </If>
-                <If true=${minutesUntil}>
-                    <h3>${minutesUntil}:</h3>
-                </If>
-                <h3>${secondsUntil}</h3>
+            <Container column>
+                <Container row>
+                    <If true=${daysUntil}>
+                        <h3 width="max-content" white-space="pre">${daysUntil} days, </h3>
+                    </If>
+                    <If true=${hoursUntil}>
+                        <h3>${hoursUntil}:</h3>
+                    </If>
+                    <If true=${minutesUntil}>
+                        <h3>${minutesUntil}:</h3>
+                    </If>
+                    <h3>${secondsUntil}</h3>
+                </Container>
+                <h5 margin-top=1rem text-align=right display=flex>${title}</h5>
             </Container>
         `
     }
         
     function parseUpcomingTodos(text, timezoneReference=(new Date())) {
-        console.debug(`text is:`,text)
         let todos = []
         let reocurringTasks = []
         if (text) {
@@ -258,7 +265,6 @@
                         reocurringTasks.push({ description, start, days })
                     } catch (error) {
                         console.error("Error trying to parse weekly reocurring event")
-                        console.debug(`error is:`,error)
                     }
                     continue
                 }
@@ -305,12 +311,31 @@
         // 
         const activeTasks = []
         let now = new DateTime
-        let todayName = now.dayName
-        let tomorrowName = now.add({days: 1}).dayName
+        let todayName = (new DateTime).dayName
+        const dayNameToOffset = {}
+        const backupDayNameToOffset = {}
+        for (const weekDayIndex of [0,1,2,3,4,5,6,]) {
+            const dayName = (new DateTime).add({days: weekDayIndex}).dayName
+            dayNameToOffset[dayName] = weekDayIndex
+            backupDayNameToOffset[dayName] = weekDayIndex
+        }
+        // today's name, but +1  week from now
+        backupDayNameToOffset[todayName] = 7
+        
         for (let each of reocurringTasks) {
-            // add to today
-            if (each.days.includes(todayName)) {
-                let eventDateTime = new DateTime()
+            const closestOffset = Math.min(...each.days.map(eachDayName=>dayNameToOffset[eachDayName]))
+            let eventDateTime = new DateTime().add({days: closestOffset})
+            try {
+                eventDateTime.time = each.start
+            } catch (error) {
+                console.warn(error)
+                console.warn("Probably bad time format")
+                continue
+            }
+            const isInThePastOfToday = eventDateTime.getTime() < (new Date().getTime())
+            if (isInThePastOfToday) {
+                const closestOffset = Math.min(...each.days.map(eachDayName=>backupDayNameToOffset[eachDayName]))
+                eventDateTime = new DateTime().add({days: closestOffset})
                 try {
                     eventDateTime.time = each.start
                 } catch (error) {
@@ -318,32 +343,15 @@
                     console.warn("Probably bad time format")
                     continue
                 }
-                activeTasks.push({
-                    dateTime: eventDateTime,
-                    date: eventDateTime.date,
-                    hour: eventDateTime.hour24,
-                    minute: eventDateTime.minute,
-                    content: each.description,
-                })
             }
-            // add to tomorrow
-            if (each.days.includes(tomorrowName)) {
-                let eventDateTime = new DateTime().add({days: 1})
-                try {
-                    eventDateTime.time = each.start
-                } catch (error) {
-                    console.warn(error)
-                    console.warn("Probably bad time format")
-                    continue
-                }
-                activeTasks.push({
-                    dateTime: eventDateTime,
-                    date: eventDateTime.date,
-                    hour: eventDateTime.hour24,
-                    minute: eventDateTime.minute,
-                    content: each.description,
-                })
-            }
+            
+            activeTasks.push({
+                dateTime: eventDateTime,
+                date: eventDateTime.date,
+                hour: eventDateTime.hour24,
+                minute: eventDateTime.minute,
+                content: each.description,
+            })
         }
         
         // 
